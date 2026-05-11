@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<!-- saved from url=(0053)file:///Users/helenasavenko/Downloads/fix_rail_2.html -->
+<html lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fix Rail 2 — The Light Within</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{
+  min-height:100vh;
+  background:#07050f;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  padding:24px 16px;
+}
+#wrap{width:100%;max-width:380px;}
+#scene{
+  width:100%;background:#0d0a1a;border-radius:16px;
+  padding:24px 0 28px;overflow:hidden;position:relative;
+  user-select:none;-webkit-user-select:none;touch-action:none;
+  border:0.5px solid rgba(255,255,255,0.06);
+}
+#stars-container{
+  display:flex;flex-direction:column;align-items:center;
+  position:relative;z-index:1;
+}
+#rail-line{
+  position:absolute;left:50%;top:0;bottom:0;width:1.5px;
+  background:rgba(255,255,255,0.08);transform:translateX(-50%);z-index:0;
+}
+.star-wrap{
+  width:72px;height:72px;display:flex;align-items:center;
+  justify-content:center;flex-shrink:0;position:relative;z-index:1;
+}
+.scanvas{display:block;touch-action:none;cursor:grab;}
+.scanvas.anchor-c{cursor:default;}
+.scanvas.dragged{opacity:0;}
+.slot-ph{
+  width:54px;height:54px;border-radius:50%;
+  border:1.5px dashed rgba(255,255,255,0.2);
+  display:flex;align-items:center;justify-content:center;
+  font-family:system-ui,sans-serif;font-size:10px;
+  color:rgba(255,255,255,0.25);letter-spacing:0.05em;
+  text-transform:uppercase;
+}
+#rail-btn{
+  display:block;margin:0 auto 14px;
+  background:rgba(255,200,80,0.08);
+  border:1px dashed rgba(255,200,80,0.35);
+  color:rgba(255,200,80,0.75);border-radius:8px;
+  padding:8px 18px;font-size:11px;letter-spacing:0.07em;
+  text-transform:uppercase;cursor:pointer;
+  font-family:system-ui,sans-serif;touch-action:manipulation;
+}
+#rail-btn:active{background:rgba(255,200,80,0.18);}
+#rail-btn.used{opacity:0.3;pointer-events:none;}
+#status{
+  text-align:center;font-size:11px;color:rgba(160,140,220,0.5);
+  letter-spacing:0.08em;text-transform:uppercase;margin-top:18px;
+  font-family:system-ui,sans-serif;padding:0 16px;min-height:16px;
+}
+#solved-bar{
+  text-align:center;font-size:12px;color:rgba(120,220,180,0.8);
+  letter-spacing:0.04em;font-family:system-ui,sans-serif;
+  margin-top:8px;min-height:18px;padding:0 16px;
+  opacity:0;transition:opacity 0.5s;
+}
+#reset-btn{
+  display:block;margin:12px auto 0;
+  background:rgba(255,255,255,0.03);
+  border:0.5px solid rgba(255,255,255,0.12);
+  color:rgba(160,140,220,0.6);border-radius:8px;
+  padding:7px 20px;font-size:11px;letter-spacing:0.07em;
+  text-transform:uppercase;cursor:pointer;
+  font-family:system-ui,sans-serif;touch-action:manipulation;
+}
+#reset-btn:active{background:rgba(255,255,255,0.08);}
+#ghost-c{
+  position:fixed;pointer-events:none;z-index:9999;
+  display:none;transform:translate(-50%,-50%);
+}
+</style>
+</head>
+<body>
+
+<div id="wrap">
+  <button id="rail-btn">⬡ Use Rail Part</button>
+  <div id="scene">
+    <div style="position:relative;">
+      <div id="rail-line"></div>
+      <div id="stars-container"><div class="star-wrap"><canvas width="60" height="60" class="scanvas anchor-c"></canvas></div><div class="star-wrap"><div class="slot-ph">slot</div></div><div class="star-wrap movable"><canvas width="60" height="60" class="scanvas" style="cursor: default;"></canvas></div><div class="star-wrap movable"><canvas width="60" height="60" class="scanvas" style="cursor: default;"></canvas></div><div class="star-wrap movable"><canvas width="60" height="60" class="scanvas" style="cursor: default;"></canvas></div><div class="star-wrap movable"><canvas width="60" height="60" class="scanvas" style="cursor: default;"></canvas></div><div class="star-wrap movable"><canvas width="60" height="60" class="scanvas" style="cursor: default;"></canvas></div><div class="star-wrap movable"><canvas width="60" height="60" class="scanvas" style="cursor: default;"></canvas></div><div class="star-wrap"><canvas width="60" height="60" class="scanvas anchor-c"></canvas></div></div>
+    </div>
+    <div id="status">Place the Rail Part first</div>
+  </div>
+  <div id="solved-bar"></div>
+  <button id="reset-btn">Shuffle</button>
+</div>
+<canvas id="ghost-c" width="60" height="60"></canvas>
+
+<script>
+const SZ = 60;
+const YELLOW = [255, 200, 50];
+const BLUE   = [60, 120, 255];
+
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+function lerpCol(c1, c2, t) {
+  return [
+    Math.round(lerp(c1[0], c2[0], t)),
+    Math.round(lerp(c1[1], c2[1], t)),
+    Math.round(lerp(c1[2], c2[2], t))
+  ];
+}
+
+function rgb(c, a) {
+  return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + (a ?? 1) + ')';
+}
+
+function drawCircle(ctx, col) {
+  const cx = SZ / 2, cy = SZ / 2, r = SZ * 0.44;
+  ctx.clearRect(0, 0, SZ, SZ);
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = rgb(col);
+  ctx.fill();
+}
+
+function drawCross(ctx, col) {
+  const cx = SZ / 2, cy = SZ / 2, r = SZ * 0.44;
+  const arm = r * 0.32, len = r;
+  ctx.clearRect(0, 0, SZ, SZ);
+  ctx.fillStyle = rgb(col);
+  ctx.beginPath();
+  ctx.moveTo(cx - arm, cy - len); ctx.lineTo(cx + arm, cy - len);
+  ctx.lineTo(cx + arm, cy - arm); ctx.lineTo(cx + len, cy - arm);
+  ctx.lineTo(cx + len, cy + arm); ctx.lineTo(cx + arm, cy + arm);
+  ctx.lineTo(cx + arm, cy + len); ctx.lineTo(cx - arm, cy + len);
+  ctx.lineTo(cx - arm, cy + arm); ctx.lineTo(cx - len, cy + arm);
+  ctx.lineTo(cx - len, cy - arm); ctx.lineTo(cx - arm, cy - arm);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawStarShape(ctx, spikiness, col) {
+  const cx = SZ / 2, cy = SZ / 2;
+  const outerR = SZ * 0.44;
+  const innerR = outerR * lerp(0.78, 0.28, spikiness);
+  const pts = 5;
+  ctx.clearRect(0, 0, SZ, SZ);
+  ctx.fillStyle = rgb(col);
+  ctx.beginPath();
+  for (let i = 0; i < pts * 2; i++) {
+    const angle = (i * Math.PI / pts) - Math.PI / 2;
+    const r = i % 2 === 0 ? outerR : innerR;
+    if (i === 0) ctx.moveTo(cx + Math.cos(angle) * r, cy + Math.sin(angle) * r);
+    else ctx.lineTo(cx + Math.cos(angle) * r, cy + Math.sin(angle) * r);
+  }
+  ctx.closePath();
+  ctx.fill();
+}
+
+const NODES = [
+  { type: 'circle', t: 0   },
+  { type: 'star',   t: 1/7 },
+  { type: 'star',   t: 2/7 },
+  { type: 'star',   t: 3/7 },
+  { type: 'star',   t: 4/7 },
+  { type: 'star',   t: 5/7 },
+  { type: 'star',   t: 6/7 },
+  { type: 'cross',  t: 1   },
+];
+
+function drawNode(ctx, nodeIdx) {
+  const node = NODES[nodeIdx];
+  const col = lerpCol(YELLOW, BLUE, node.t);
+  if (node.type === 'circle') {
+    drawCircle(ctx, col);
+  } else if (node.type === 'cross') {
+    drawCross(ctx, col);
+  } else {
+    const spikiness = (node.t - 1/7) / (6/7 - 1/7);
+    drawStarShape(ctx, spikiness, col);
+  }
+}
+
+let order = [0, 1, 2, 3, 4, 5];
+let solved = false;
+let railPlaced = false;
+let dragging = false;
+
+const container = document.getElementById('stars-container');
+const ghostC = document.getElementById('ghost-c');
+const ghostCtx = ghostC.getContext('2d');
+
+function shuffle(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  if (a.join(',') === [0,1,2,3,4,5].join(',')) return shuffle(arr);
+  return a;
+}
+
+function checkSolved() {
+  return order.join(',') === [0,1,2,3,4,5].join(',');
+}
+
+function makeCanvas(nodeIdx, isAnchor) {
+  const c = document.createElement('canvas');
+  c.width = SZ; c.height = SZ;
+  c.className = 'scanvas' + (isAnchor ? ' anchor-c' : '');
+  drawNode(c.getContext('2d'), nodeIdx);
+  return c;
+}
+
+function getMovableWraps() {
+  return Array.from(container.querySelectorAll('.star-wrap.movable'));
+}
+
+function getSlotCentersY() {
+  return getMovableWraps().map(el => {
+    const r = el.getBoundingClientRect();
+    return r.top + r.height / 2;
+  });
+}
+
+function buildRow() {
+  container.innerHTML = '';
+
+  const wT = document.createElement('div');
+  wT.className = 'star-wrap';
+  wT.appendChild(makeCanvas(0, true));
+  container.appendChild(wT);
+
+  if (!railPlaced) {
+    const sl = document.createElement('div');
+    sl.className = 'star-wrap';
+    const ph = document.createElement('div');
+    ph.className = 'slot-ph';
+    ph.textContent = 'slot';
+    sl.appendChild(ph);
+    container.appendChild(sl);
+  }
+
+  for (let i = 0; i < order.length; i++) {
+    const nodeIdx = order[i] + 1;
+    const wrap = document.createElement('div');
+    wrap.className = 'star-wrap movable';
+    const can = makeCanvas(nodeIdx, false);
+    if (!railPlaced) can.style.cursor = 'default';
+    wrap.appendChild(can);
+    container.appendChild(wrap);
+    if (railPlaced) attachDrag(can, wrap, i);
+  }
+
+  const wB = document.createElement('div');
+  wB.className = 'star-wrap';
+  wB.appendChild(makeCanvas(7, true));
+  container.appendChild(wB);
+}
+
+function attachDrag(canvas, wrap, startIdx) {
+  let dragIdx = startIdx;
+  let currentOrder = null;
+
+  function onStart(clientX, clientY) {
+    if (solved || !railPlaced) return;
+    dragging = true;
+    dragIdx = startIdx;
+    currentOrder = order.slice();
+    ghostCtx.clearRect(0, 0, SZ, SZ);
+    drawNode(ghostCtx, order[startIdx] + 1);
+    ghostC.style.display = 'block';
+    ghostC.style.left = clientX + 'px';
+    ghostC.style.top = clientY + 'px';
+    canvas.classList.add('dragged');
+    document.getElementById('status').textContent = 'Slide up or down to reorder';
+  }
+
+  function onMove(clientX, clientY) {
+    if (!dragging) return;
+    ghostC.style.left = clientX + 'px';
+    ghostC.style.top = clientY + 'px';
+    const centers = getSlotCentersY();
+    let targetIdx = dragIdx, minDist = Infinity;
+    centers.forEach((cy, i) => {
+      const d = Math.abs(clientY - cy);
+      if (d < minDist) { minDist = d; targetIdx = i; }
+    });
+    if (targetIdx !== dragIdx) {
+      const newOrder = currentOrder.slice();
+      const item = newOrder.splice(dragIdx, 1)[0];
+      newOrder.splice(targetIdx, 0, item);
+      order = newOrder;
+      dragIdx = targetIdx;
+      currentOrder = newOrder.slice();
+      rebuildSliding(dragIdx);
+    }
+  }
+
+  function onEnd() {
+    if (!dragging) return;
+    dragging = false;
+    ghostC.style.display = 'none';
+    if (checkSolved()) {
+      solved = true;
+      buildRow();
+      document.getElementById('status').textContent = 'The gradient runs true.';
+      const bar = document.getElementById('solved-bar');
+      bar.textContent = 'The stars lock into place. The rail reforms.';
+      bar.style.opacity = '1';
+    } else {
+      buildRow();
+      document.getElementById('status').textContent = 'Hold and drag a star up or down';
+    }
+  }
+
+  canvas.addEventListener('mousedown', e => {
+    e.preventDefault();
+    onStart(e.clientX, e.clientY);
+    const mm = e2 => onMove(e2.clientX, e2.clientY);
+    const mu = () => {
+      onEnd();
+      document.removeEventListener('mousemove', mm);
+      document.removeEventListener('mouseup', mu);
+    };
+    document.addEventListener('mousemove', mm);
+    document.addEventListener('mouseup', mu);
+  });
+
+  canvas.addEventListener('touchstart', e => {
+    e.preventDefault();
+    const t = e.touches[0];
+    onStart(t.clientX, t.clientY);
+    const tm = e2 => { const t2 = e2.touches[0]; onMove(t2.clientX, t2.clientY); };
+    const tu = () => {
+      onEnd();
+      document.removeEventListener('touchmove', tm);
+      document.removeEventListener('touchend', tu);
+    };
+    document.addEventListener('touchmove', tm, { passive: false });
+    document.addEventListener('touchend', tu);
+  }, { passive: false });
+}
+
+function rebuildSliding(activeDragIdx) {
+  const wraps = getMovableWraps();
+  wraps.forEach((wrap, i) => {
+    const can = wrap.querySelector('canvas');
+    drawNode(can.getContext('2d'), order[i] + 1);
+    if (i === activeDragIdx) can.classList.add('dragged');
+    else can.classList.remove('dragged');
+  });
+}
+
+document.getElementById('rail-btn').addEventListener('click', () => {
+  railPlaced = true;
+  document.getElementById('rail-btn').classList.add('used');
+  document.getElementById('status').textContent = 'Hold and drag a star up or down';
+  buildRow();
+});
+
+document.getElementById('reset-btn').addEventListener('click', () => {
+  solved = false;
+  railPlaced = false;
+  order = shuffle([0, 1, 2, 3, 4, 5]);
+  document.getElementById('solved-bar').style.opacity = '0';
+  document.getElementById('solved-bar').textContent = '';
+  document.getElementById('status').textContent = 'Place the Rail Part first';
+  document.getElementById('rail-btn').classList.remove('used');
+  buildRow();
+});
+
+order = shuffle([0, 1, 2, 3, 4, 5]);
+buildRow();
+</script>
+
+
+</body></html>
