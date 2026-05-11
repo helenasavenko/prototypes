@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<!-- saved from url=(0053)file:///Users/helenasavenko/Downloads/fix_rail_1.html -->
+<html lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fix Rail 1 — The Light Within</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{
+  min-height:100vh;
+  background:#07050f;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  padding:24px 16px;
+}
+#scene{
+  width:100%;
+  max-width:380px;
+  background:#0d0a1a;
+  border-radius:16px;
+  padding:28px 0 28px;
+  overflow:hidden;
+  position:relative;
+  user-select:none;
+  -webkit-user-select:none;
+  touch-action:none;
+  border:0.5px solid rgba(255,255,255,0.06);
+}
+#track{
+  position:relative;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:0;
+}
+#rail-line{
+  position:absolute;
+  left:50%;
+  top:0;bottom:0;
+  width:1.5px;
+  background:rgba(255,255,255,0.08);
+  transform:translateX(-50%);
+  z-index:0;
+}
+#stars-container{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  position:relative;
+  z-index:1;
+}
+.star-wrap{
+  width:64px;
+  height:64px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex-shrink:0;
+  position:relative;
+  transition:transform 0.18s cubic-bezier(.4,0,.2,1);
+  z-index:1;
+}
+.star-node{
+  width:52px;
+  height:52px;
+  border-radius:50%;
+  background:#12102e;
+  border:1.5px solid rgba(140,120,255,0.3);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-family:system-ui,sans-serif;
+  font-size:16px;
+  font-weight:500;
+  color:rgba(200,190,255,0.9);
+  cursor:grab;
+  touch-action:none;
+  transition:border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+.star-node.anchor{
+  width:48px;
+  height:48px;
+  background:#0e0c28;
+  border:1.5px solid rgba(180,160,255,0.45);
+  color:rgba(200,180,255,0.6);
+  font-size:14px;
+  cursor:default;
+}
+.star-node.dragged{opacity:0;}
+.star-node.solved{
+  border-color:rgba(100,220,180,0.7);
+  background:#0e2820;
+  color:rgba(140,240,200,0.95);
+  box-shadow:0 0 14px rgba(80,200,160,0.25);
+}
+#status{
+  text-align:center;
+  font-size:11px;
+  color:rgba(160,140,220,0.5);
+  letter-spacing:0.08em;
+  text-transform:uppercase;
+  margin-top:20px;
+  font-family:system-ui,sans-serif;
+  padding:0 16px;
+  min-height:16px;
+}
+#solved-bar{
+  text-align:center;
+  font-size:12px;
+  color:rgba(120,220,180,0.8);
+  letter-spacing:0.04em;
+  font-family:system-ui,sans-serif;
+  margin-top:10px;
+  min-height:18px;
+  padding:0 16px;
+  opacity:0;
+  transition:opacity 0.5s;
+  max-width:380px;
+  width:100%;
+}
+#reset-btn{
+  display:block;
+  margin:14px auto 0;
+  background:rgba(255,255,255,0.03);
+  border:0.5px solid rgba(255,255,255,0.12);
+  color:rgba(160,140,220,0.6);
+  border-radius:8px;
+  padding:8px 22px;
+  font-size:11px;
+  letter-spacing:0.07em;
+  text-transform:uppercase;
+  cursor:pointer;
+  font-family:system-ui,sans-serif;
+  touch-action:manipulation;
+}
+#reset-btn:active{background:rgba(255,255,255,0.08);}
+#ghost{
+  position:fixed;
+  pointer-events:none;
+  z-index:9999;
+  width:52px;
+  height:52px;
+  border-radius:50%;
+  background:#1e1a48;
+  border:1.5px solid rgba(140,200,255,0.8);
+  display:none;
+  align-items:center;
+  justify-content:center;
+  font-family:system-ui,sans-serif;
+  font-size:16px;
+  font-weight:500;
+  color:rgba(200,230,255,0.95);
+  transform:translate(-50%,-50%);
+}
+</style>
+</head>
+<body>
+
+<div id="scene">
+  <div id="track">
+    <div id="rail-line"></div>
+    <div id="stars-container"><div class="star-wrap"><div class="star-node anchor">★</div></div><div class="star-wrap movable"><div class="star-node">F</div></div><div class="star-wrap movable"><div class="star-node">B</div></div><div class="star-wrap movable"><div class="star-node">A</div></div><div class="star-wrap movable"><div class="star-node">C</div></div><div class="star-wrap movable"><div class="star-node">D</div></div><div class="star-wrap movable"><div class="star-node">E</div></div><div class="star-wrap"><div class="star-node anchor">★</div></div></div>
+  </div>
+  <div id="status">Hold and drag a star up or down</div>
+</div>
+<div id="solved-bar"></div>
+<button id="reset-btn">Shuffle</button>
+<div id="ghost"></div>
+
+<script>
+const CORRECT = ['A','B','C','D','E','F'];
+let order = [];
+let solved = false;
+let dragging = false;
+const ghost = document.getElementById('ghost');
+const container = document.getElementById('stars-container');
+
+function shuffle(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  if (a.join('') === CORRECT.join('')) return shuffle(arr);
+  return a;
+}
+
+function checkSolved() {
+  return order.join('') === CORRECT.join('');
+}
+
+function getMovableWraps() {
+  return Array.from(container.querySelectorAll('.star-wrap.movable'));
+}
+
+function getSlotCentersY() {
+  return getMovableWraps().map(el => {
+    const r = el.getBoundingClientRect();
+    return r.top + r.height / 2;
+  });
+}
+
+function buildRow() {
+  container.innerHTML = '';
+
+  const wrapT = document.createElement('div');
+  wrapT.className = 'star-wrap';
+  const anT = document.createElement('div');
+  anT.className = 'star-node anchor';
+  anT.textContent = '★';
+  wrapT.appendChild(anT);
+  container.appendChild(wrapT);
+
+  for (let i = 0; i < order.length; i++) {
+    const wrap = document.createElement('div');
+    wrap.className = 'star-wrap movable';
+    const node = document.createElement('div');
+    node.className = 'star-node' + (solved ? ' solved' : '');
+    node.textContent = order[i];
+    wrap.appendChild(node);
+    container.appendChild(wrap);
+    attachDrag(node, wrap, i);
+  }
+
+  const wrapB = document.createElement('div');
+  wrapB.className = 'star-wrap';
+  const anB = document.createElement('div');
+  anB.className = 'star-node anchor';
+  anB.textContent = '★';
+  wrapB.appendChild(anB);
+  container.appendChild(wrapB);
+}
+
+function attachDrag(node, wrap, startIdx) {
+  let dragIdx = startIdx;
+  let currentOrder = null;
+
+  function onStart(clientX, clientY) {
+    if (solved) return;
+    dragging = true;
+    dragIdx = startIdx;
+    currentOrder = order.slice();
+
+    ghost.textContent = order[startIdx];
+    ghost.style.display = 'flex';
+    ghost.style.left = clientX + 'px';
+    ghost.style.top = clientY + 'px';
+    node.classList.add('dragged');
+    document.getElementById('status').textContent = 'Slide up or down to reorder';
+  }
+
+  function onMove(clientX, clientY) {
+    if (!dragging) return;
+    ghost.style.left = clientX + 'px';
+    ghost.style.top = clientY + 'px';
+
+    const centers = getSlotCentersY();
+    let targetIdx = dragIdx;
+    let minDist = Infinity;
+    centers.forEach((cy, i) => {
+      const d = Math.abs(clientY - cy);
+      if (d < minDist) { minDist = d; targetIdx = i; }
+    });
+
+    if (targetIdx !== dragIdx) {
+      const newOrder = currentOrder.slice();
+      const item = newOrder.splice(dragIdx, 1)[0];
+      newOrder.splice(targetIdx, 0, item);
+      order = newOrder;
+      dragIdx = targetIdx;
+      currentOrder = newOrder.slice();
+      rebuildSliding(dragIdx);
+    }
+  }
+
+  function onEnd() {
+    if (!dragging) return;
+    dragging = false;
+    ghost.style.display = 'none';
+
+    if (checkSolved()) {
+      solved = true;
+      buildRow();
+      document.getElementById('status').textContent = 'The pattern reveals itself.';
+      const bar = document.getElementById('solved-bar');
+      bar.textContent = 'The stars lock into place. The rail reforms.';
+      bar.style.opacity = '1';
+    } else {
+      buildRow();
+      document.getElementById('status').textContent = 'Hold and drag a star up or down';
+    }
+  }
+
+  node.addEventListener('mousedown', e => {
+    e.preventDefault();
+    onStart(e.clientX, e.clientY);
+    const mm = e2 => onMove(e2.clientX, e2.clientY);
+    const mu = () => {
+      onEnd();
+      document.removeEventListener('mousemove', mm);
+      document.removeEventListener('mouseup', mu);
+    };
+    document.addEventListener('mousemove', mm);
+    document.addEventListener('mouseup', mu);
+  });
+
+  node.addEventListener('touchstart', e => {
+    e.preventDefault();
+    const t = e.touches[0];
+    onStart(t.clientX, t.clientY);
+    const tm = e2 => { const t2 = e2.touches[0]; onMove(t2.clientX, t2.clientY); };
+    const tu = () => {
+      onEnd();
+      document.removeEventListener('touchmove', tm);
+      document.removeEventListener('touchend', tu);
+    };
+    document.addEventListener('touchmove', tm, { passive: false });
+    document.addEventListener('touchend', tu);
+  }, { passive: false });
+}
+
+function rebuildSliding(activeDragIdx) {
+  const wraps = getMovableWraps();
+  wraps.forEach((wrap, i) => {
+    const node = wrap.querySelector('.star-node');
+    node.textContent = order[i];
+    if (i === activeDragIdx) node.classList.add('dragged');
+    else node.classList.remove('dragged');
+  });
+}
+
+document.getElementById('reset-btn').addEventListener('click', () => {
+  solved = false;
+  order = shuffle(CORRECT.slice());
+  document.getElementById('solved-bar').style.opacity = '0';
+  document.getElementById('solved-bar').textContent = '';
+  document.getElementById('status').textContent = 'Hold and drag a star up or down';
+  buildRow();
+});
+
+order = shuffle(CORRECT.slice());
+buildRow();
+</script>
+
+
+</body></html>
